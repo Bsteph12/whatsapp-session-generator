@@ -195,7 +195,7 @@ app.get('/', (req, res) => {
         <div class="container">
             <div class="logo">📱</div>
             <h1>Session Generator</h1>
-            <p class="subtitle">Générateur de session WhatsApp - STEPHDEV</p>
+            <p class="subtitle">Générateur de session WhatsApp - Bot STEPHDEV</p>
             
             <form id="sessionForm">
                 <div class="form-group">
@@ -387,16 +387,16 @@ app.post('/generate-session', async (req, res) => {
       }
     });
     
-    // Demander le code de pairage avec "STEPHDEV"
+    // Demander le code de pairage (WhatsApp génère le code automatiquement)
     if (!sock.authState.creds.registered) {
       try {
-        // On force le code à être "STEPHDEV" 
         const code = await sock.requestPairingCode(phoneNumber);
-        console.log(`📱 Code de pairage pour ${phoneNumber}: STEPHDEV`);
+        const formattedCode = code.match(/.{1,4}/g).join("-");
+        console.log(`📱 Code de pairage pour ${phoneNumber}: ${formattedCode}`);
         
         res.json({
           success: true,
-          pairingCode: 'STEPHDEV',
+          pairingCode: formattedCode,
           sessionId: sessionId,
           message: 'Code de pairage généré avec succès'
         });
@@ -404,7 +404,7 @@ app.post('/generate-session', async (req, res) => {
         console.error('Erreur lors du pairing:', error);
         res.json({
           success: false,
-          message: 'Erreur lors de la génération du code de pairage'
+          message: 'Erreur lors de la génération du code de pairage: ' + error.message
         });
       }
     } else {
