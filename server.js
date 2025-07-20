@@ -1,350 +1,226 @@
+// 1. SERVEUR WEB (pour l'interface de génération de codes)
+// Ce fichier doit être votre point d'entrée sur Render
+
 const express = require('express');
-const {
-  default: makeWASocket,
-  useMultiFileAuthState,
-  fetchLatestBaileysVersion,
-  DisconnectReason
-} = require('@whiskeysockets/baileys');
-const pino = require('pino');
 const fs = require('fs');
 const path = require('path');
-const cors = require('cors');
+const { 
+  default: makeWASocket, 
+  useMultiFileAuthState, 
+  fetchLatestBaileysVersion,
+  DisconnectReason 
+} = require('@whiskeysockets/baileys');
+const pino = require('pino');
 
 const app = express();
-const PORT = process.env.PORT || 3000;
+const PORT = process.env.PORT || 10000;
 
-// Configuration
-app.use(cors());
+// Store pour les codes de pairage en mémoire
+let pairingCodes = {};
+let activeSockets = {};
+
 app.use(express.json());
 app.use(express.static('public'));
 
-// Stockage temporaire des sessions
-const activeSessions = new Map();
-
-// Page d'accueil
+// Route pour l'interface web
 app.get('/', (req, res) => {
   res.send(`
-    <!DOCTYPE html>
-    <html lang="fr">
-    <head>
-        <meta charset="UTF-8">
-        <meta name="viewport" content="width=device-width, initial-scale=1.0">
-        <title>WhatsApp Session Generator - STEPHDEV</title>
-        <style>
-            * {
-                margin: 0;
-                padding: 0;
-                box-sizing: border-box;
-            }
+<!DOCTYPE html>
+<html lang="fr">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Générateur de Code WhatsApp</title>
+    <style>
+        * { margin: 0; padding: 0; box-sizing: border-box; }
+        body {
+            font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            min-height: 100vh;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            padding: 20px;
+        }
+        .container {
+            background: white;
+            border-radius: 20px;
+            padding: 40px;
+            box-shadow: 0 20px 40px rgba(0,0,0,0.1);
+            max-width: 500px;
+            width: 100%;
+            text-align: center;
+        }
+        .phone-input {
+            width: 100%;
+            padding: 15px;
+            border: 2px solid #e1e5e9;
+            border-radius: 10px;
+            font-size: 18px;
+            margin: 20px 0;
+            text-align: center;
+        }
+        .generate-btn {
+            background: linear-gradient(45deg, #25D366, #128C7E);
+            color: white;
+            padding: 15px 30px;
+            border: none;
+            border-radius: 10px;
+            font-size: 18px;
+            cursor: pointer;
+            width: 100%;
+            transition: transform 0.2s;
+        }
+        .generate-btn:hover { transform: translateY(-2px); }
+        .code-display {
+            background: #f8f9fa;
+            padding: 20px;
+            border-radius: 10px;
+            margin: 20px 0;
+            border: 2px solid #25D366;
+        }
+        .pairing-code {
+            font-size: 24px;
+            font-weight: bold;
+            color: #25D366;
+            letter-spacing: 2px;
+        }
+        .instructions {
+            background: #e3f2fd;
+            padding: 20px;
+            border-radius: 10px;
+            margin-top: 20px;
+            text-align: left;
+        }
+        .step { margin: 10px 0; }
+        .status { margin: 20px 0; padding: 10px; border-radius: 5px; }
+        .loading { background: #fff3cd; color: #856404; }
+        .success { background: #d4edda; color: #155724; }
+        .error { background: #f8d7da; color: #721c24; }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <h1>🔗 Générateur de Code WhatsApp</h1>
+        <p>Entrez votre numéro pour générer un code de pairage</p>
+        
+        <input type="text" id="phoneInput" class="phone-input" placeholder="237698711207" maxlength="15">
+        <small style="color: #666;">Format international sans le +</small>
+        
+        <button onclick="generateCode()" class="generate-btn">Générer la session</button>
+        
+        <div id="status" class="status" style="display: none;"></div>
+        
+        <div id="codeSection" style="display: none;">
+            <div class="code-display">
+                <h3>Code de pairage généré !</h3>
+                <div class="pairing-code" id="pairingCode">XXXX-XXXX</div>
+            </div>
             
-            body {
-                font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
-                background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
-                min-height: 100vh;
-                display: flex;
-                justify-content: center;
-                align-items: center;
-                padding: 20px;
-            }
-            
-            .container {
-                background: white;
-                padding: 40px;
-                border-radius: 20px;
-                box-shadow: 0 20px 40px rgba(0,0,0,0.1);
-                max-width: 400px;
-                width: 100%;
-                text-align: center;
-            }
-            
-            .logo {
-                font-size: 2.5em;
-                color: #25D366;
-                margin-bottom: 10px;
-            }
-            
-            h1 {
-                color: #333;
-                margin-bottom: 10px;
-                font-size: 1.8em;
-            }
-            
-            .subtitle {
-                color: #666;
-                margin-bottom: 30px;
-                font-size: 0.9em;
-            }
-            
-            .form-group {
-                margin-bottom: 20px;
-                text-align: left;
-            }
-            
-            label {
-                display: block;
-                color: #555;
-                margin-bottom: 8px;
-                font-weight: 500;
-            }
-            
-            input {
-                width: 100%;
-                padding: 15px;
-                border: 2px solid #e0e0e0;
-                border-radius: 10px;
-                font-size: 16px;
-                transition: border-color 0.3s;
-            }
-            
-            input:focus {
-                outline: none;
-                border-color: #25D366;
-            }
-            
-            .btn {
-                width: 100%;
-                padding: 15px;
-                background: #25D366;
-                color: white;
-                border: none;
-                border-radius: 10px;
-                font-size: 16px;
-                font-weight: 600;
-                cursor: pointer;
-                transition: background 0.3s;
-            }
-            
-            .btn:hover {
-                background: #20b358;
-            }
-            
-            .btn:disabled {
-                background: #ccc;
-                cursor: not-allowed;
-            }
-            
-            .status {
-                margin-top: 20px;
-                padding: 15px;
-                border-radius: 10px;
-                text-align: center;
-                display: none;
-            }
-            
-            .status.success {
-                background: #d4edda;
-                color: #155724;
-                border: 1px solid #c3e6cb;
-            }
-            
-            .status.error {
-                background: #f8d7da;
-                color: #721c24;
-                border: 1px solid #f5c6cb;
-            }
-            
-            .status.info {
-                background: #d1ecf1;
-                color: #0c5460;
-                border: 1px solid #bee5eb;
-            }
-            
-            .code-display {
-                font-family: 'Courier New', monospace;
-                font-size: 1.5em;
-                font-weight: bold;
-                color: #25D366;
-                background: #f8f9fa;
-                padding: 15px;
-                border-radius: 10px;
-                margin: 15px 0;
-                letter-spacing: 2px;
-            }
-            
-            .instructions {
-                background: #fff3cd;
-                color: #856404;
-                padding: 15px;
-                border-radius: 10px;
-                margin-top: 15px;
-                text-align: left;
-                font-size: 0.9em;
-            }
-            
-            .step {
-                margin-bottom: 8px;
-            }
-            
-            .download-link {
-                display: inline-block;
-                margin-top: 15px;
-                padding: 10px 20px;
-                background: #007bff;
-                color: white;
-                text-decoration: none;
-                border-radius: 5px;
-                transition: background 0.3s;
-            }
-            
-            .download-link:hover {
-                background: #0056b3;
-            }
-        </style>
-    </head>
-    <body>
-        <div class="container">
-            <div class="logo">📱</div>
-            <h1>Session Generator</h1>
-            <p class="subtitle">Générateur de session WhatsApp - Bot STEPHDEV</p>
-            
-            <form id="sessionForm">
-                <div class="form-group">
-                    <label for="phoneNumber">Numéro de téléphone WhatsApp:</label>
-                    <input 
-                        type="tel" 
-                        id="phoneNumber" 
-                        placeholder="ex: 22898133388" 
-                        required
-                    >
-                    <small style="color: #666; font-size: 0.8em;">Format international sans le +</small>
-                </div>
-                
-                <button type="submit" class="btn" id="generateBtn">
-                    Générer la session
-                </button>
-            </form>
-            
-            <div id="status" class="status"></div>
+            <div class="instructions">
+                <div class="step">📱 <strong>1</strong> Ouvrez WhatsApp sur votre téléphone</div>
+                <div class="step">⚙️ <strong>2</strong> Allez dans Paramètres → Appareils liés</div>
+                <div class="step">🔗 <strong>3</strong> Appuyez sur "Lier un appareil"</div>
+                <div class="step">🔢 <strong>4</strong> Entrez le code: <strong id="codeRepeat">XXXX-XXXX</strong></div>
+                <div class="step">⏳ <strong>5</strong> Attendez la confirmation...</div>
+            </div>
         </div>
+    </div>
 
-        <script>
-            const form = document.getElementById('sessionForm');
-            const statusDiv = document.getElementById('status');
-            const generateBtn = document.getElementById('generateBtn');
+    <script>
+        async function generateCode() {
+            const phone = document.getElementById('phoneInput').value.trim();
+            const status = document.getElementById('status');
+            const codeSection = document.getElementById('codeSection');
             
-            form.addEventListener('submit', async (e) => {
-                e.preventDefault();
+            if (!phone || phone.length < 10) {
+                showStatus('Veuillez entrer un numéro valide', 'error');
+                return;
+            }
+            
+            showStatus('Génération du code en cours...', 'loading');
+            codeSection.style.display = 'none';
+            
+            try {
+                const response = await fetch('/generate-code', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ phone })
+                });
                 
-                const phoneNumber = document.getElementById('phoneNumber').value.trim();
+                const data = await response.json();
                 
-                if (!phoneNumber) {
-                    showStatus('error', 'Veuillez entrer un numéro de téléphone valide');
-                    return;
-                }
-                
-                generateBtn.disabled = true;
-                generateBtn.textContent = 'Génération en cours...';
-                
-                try {
-                    const response = await fetch('/generate-session', {
-                        method: 'POST',
-                        headers: {
-                            'Content-Type': 'application/json',
-                        },
-                        body: JSON.stringify({ phoneNumber })
-                    });
+                if (data.success) {
+                    document.getElementById('pairingCode').textContent = data.code;
+                    document.getElementById('codeRepeat').textContent = data.code;
+                    codeSection.style.display = 'block';
+                    showStatus('Code généré avec succès !', 'success');
                     
+                    // Vérifier le statut de connexion
+                    checkConnectionStatus(phone);
+                } else {
+                    showStatus('Erreur: ' + data.error, 'error');
+                }
+            } catch (err) {
+                showStatus('Erreur de connexion au serveur', 'error');
+            }
+        }
+        
+        function showStatus(message, type) {
+            const status = document.getElementById('status');
+            status.textContent = message;
+            status.className = 'status ' + type;
+            status.style.display = 'block';
+        }
+        
+        async function checkConnectionStatus(phone) {
+            // Vérifier toutes les 5 secondes si la connexion est établie
+            const interval = setInterval(async () => {
+                try {
+                    const response = await fetch('/check-status/' + phone);
                     const data = await response.json();
                     
-                    if (data.success) {
-                        showPairingCode(data.pairingCode, data.sessionId);
-                        checkSessionStatus(data.sessionId);
-                    } else {
-                        showStatus('error', data.message || 'Erreur lors de la génération');
+                    if (data.connected) {
+                        showStatus('✅ Connecté avec succès !', 'success');
+                        clearInterval(interval);
+                    } else if (data.error) {
+                        showStatus('❌ ' + data.error, 'error');
+                        clearInterval(interval);
                     }
-                } catch (error) {
-                    showStatus('error', 'Erreur de connexion au serveur');
-                } finally {
-                    generateBtn.disabled = false;
-                    generateBtn.textContent = 'Générer la session';
+                } catch (err) {
+                    console.log('Erreur lors de la vérification:', err);
                 }
-            });
+            }, 5000);
             
-            function showStatus(type, message) {
-                statusDiv.className = \`status \${type}\`;
-                statusDiv.innerHTML = message;
-                statusDiv.style.display = 'block';
-            }
-            
-            function showPairingCode(code, sessionId) {
-                const instructions = \`
-                    <div class="code-display">STEPHDEV</div>
-                    <div class="instructions">
-                        <div class="step">1️⃣ Ouvrez WhatsApp sur votre téléphone</div>
-                        <div class="step">2️⃣ Allez dans <strong>Paramètres > Appareils liés</strong></div>
-                        <div class="step">3️⃣ Appuyez sur <strong>Lier un appareil</strong></div>
-                        <div class="step">4️⃣ Entrez le code: <strong>STEPHDEV</strong></div>
-                        <div class="step">5️⃣ Attendez la confirmation...</div>
-                    </div>
-                \`;
-                
-                showStatus('info', \`
-                    <strong>Code de pairage généré !</strong><br><br>
-                    \${instructions}
-                    <div id="sessionStatus">⏳ En attente de la connexion...</div>
-                \`);
-            }
-            
-            function checkSessionStatus(sessionId) {
-                const interval = setInterval(async () => {
-                    try {
-                        const response = await fetch(\`/session-status/\${sessionId}\`);
-                        const data = await response.json();
-                        
-                        const statusElement = document.getElementById('sessionStatus');
-                        
-                        if (data.connected) {
-                            clearInterval(interval);
-                            statusElement.innerHTML = \`
-                                ✅ <strong>Connexion réussie !</strong><br><br>
-                                <a href="/download/\${sessionId}" class="download-link" download="creds.json">
-                                    📥 Télécharger creds.json
-                                </a>
-                                <div style="margin-top: 10px; font-size: 0.8em; color: #666;">
-                                    Copiez ce fichier dans votre dossier de déploiement
-                                </div>
-                            \`;
-                        } else if (data.error) {
-                            clearInterval(interval);
-                            statusElement.innerHTML = \`❌ Erreur: \${data.error}\`;
-                        }
-                    } catch (error) {
-                        console.error('Erreur lors de la vérification du statut:', error);
-                    }
-                }, 2000);
-                
-                // Timeout après 5 minutes
-                setTimeout(() => {
-                    clearInterval(interval);
-                    const statusElement = document.getElementById('sessionStatus');
-                    if (statusElement && statusElement.innerHTML.includes('⏳')) {
-                        statusElement.innerHTML = '⏰ Timeout - Veuillez réessayer';
-                    }
-                }, 300000);
-            }
-        </script>
-    </body>
-    </html>
+            // Arrêter la vérification après 5 minutes
+            setTimeout(() => clearInterval(interval), 300000);
+        }
+    </script>
+</body>
+</html>
   `);
 });
 
-// Endpoint pour générer une session
-app.post('/generate-session', async (req, res) => {
+// API pour générer un code de pairage
+app.post('/generate-code', async (req, res) => {
   try {
-    const { phoneNumber } = req.body;
+    const { phone } = req.body;
     
-    if (!phoneNumber) {
-      return res.json({ success: false, message: 'Numéro de téléphone requis' });
+    if (!phone) {
+      return res.json({ success: false, error: 'Numéro requis' });
     }
     
-    const sessionId = Date.now().toString();
-    const sessionPath = path.join(__dirname, 'sessions', sessionId);
+    console.log(`🔄 Génération du code pour ${phone}`);
     
-    // Créer le dossier de session
-    if (!fs.existsSync(sessionPath)) {
-      fs.mkdirSync(sessionPath, { recursive: true });
+    // Nettoyer les anciennes sessions si elles existent
+    if (activeSockets[phone]) {
+      try {
+        activeSockets[phone].end();
+        delete activeSockets[phone];
+      } catch (e) {}
     }
     
+    const sessionPath = `./session_${phone}`;
     const { version } = await fetchLatestBaileysVersion();
     const { state, saveCreds } = await useMultiFileAuthState(sessionPath);
     
@@ -352,158 +228,118 @@ app.post('/generate-session', async (req, res) => {
       version,
       auth: state,
       printQRInTerminal: false,
-      browser: ['STEPHDEV Bot', 'Chrome', '20.0.04'],
+      browser: ['Ubuntu', 'Chrome', '20.0.04'],
       logger: pino({ level: 'silent' })
     });
     
-    // Stocker la session
-    activeSessions.set(sessionId, {
-      sock,
-      connected: false,
-      error: null,
-      phoneNumber,
-      sessionPath
-    });
-    
+    activeSockets[phone] = sock;
     sock.ev.on('creds.update', saveCreds);
     
-    // Gestion des événements de connexion
+    // Gérer les événements de connexion
     sock.ev.on('connection.update', (update) => {
       const { connection, lastDisconnect } = update;
-      const session = activeSessions.get(sessionId);
       
-      if (connection === 'close') {
+      if (connection === 'open') {
+        console.log(`✅ ${phone} connecté`);
+        pairingCodes[phone] = { ...pairingCodes[phone], connected: true };
+        
+        // Envoyer le fichier creds.json via WhatsApp
+        sendCredsFile(sock, phone, sessionPath);
+        
+      } else if (connection === 'close') {
         const code = lastDisconnect?.error?.output?.statusCode;
+        console.log(`📵 ${phone} déconnecté, code ${code}`);
+        
         if (code === DisconnectReason.loggedOut) {
-          session.error = 'Déconnecté de WhatsApp';
-        } else {
-          session.error = 'Connexion fermée';
+          pairingCodes[phone] = { ...pairingCodes[phone], error: 'Déconnecté' };
+          delete activeSockets[phone];
         }
-        activeSessions.set(sessionId, session);
-      } else if (connection === 'open') {
-        session.connected = true;
-        activeSessions.set(sessionId, session);
-        console.log(`✅ Session ${sessionId} connectée pour ${phoneNumber}`);
       }
     });
     
-    // Demander le code de pairage (WhatsApp génère le code automatiquement)
+    // Générer le code de pairage
     if (!sock.authState.creds.registered) {
       try {
-        const code = await sock.requestPairingCode(phoneNumber);
-        const formattedCode = code.match(/.{1,4}/g).join("-");
-        console.log(`📱 Code de pairage pour ${phoneNumber}: ${formattedCode}`);
+        let code = await sock.requestPairingCode(phone);
+        code = code.match(/.{1,4}/g).join("-");
         
-        res.json({
-          success: true,
-          pairingCode: formattedCode,
-          sessionId: sessionId,
-          message: 'Code de pairage généré avec succès'
-        });
-      } catch (error) {
-        console.error('Erreur lors du pairing:', error);
-        res.json({
-          success: false,
-          message: 'Erreur lors de la génération du code de pairage: ' + error.message
-        });
+        console.log(`🔗 Code généré pour ${phone}: ${code}`);
+        
+        pairingCodes[phone] = {
+          code,
+          generated: new Date(),
+          connected: false
+        };
+        
+        res.json({ success: true, code });
+      } catch (err) {
+        console.error(`❌ Erreur pairing ${phone}:`, err.message);
+        res.json({ success: false, error: err.message });
       }
     } else {
-      res.json({
-        success: false,
-        message: 'Appareil déjà enregistré'
-      });
+      res.json({ success: false, error: 'Déjà connecté' });
     }
     
   } catch (error) {
-    console.error('Erreur serveur:', error);
-    res.json({
-      success: false,
-      message: 'Erreur interne du serveur'
-    });
+    console.error('❌ Erreur générale:', error);
+    res.json({ success: false, error: error.message });
   }
 });
 
-// Vérifier le statut d'une session
-app.get('/session-status/:sessionId', (req, res) => {
-  const { sessionId } = req.params;
-  const session = activeSessions.get(sessionId);
-  
-  if (!session) {
-    return res.json({ error: 'Session non trouvée' });
-  }
+// API pour vérifier le statut de connexion
+app.get('/check-status/:phone', (req, res) => {
+  const { phone } = req.params;
+  const status = pairingCodes[phone] || {};
   
   res.json({
-    connected: session.connected,
-    error: session.error
+    connected: status.connected || false,
+    error: status.error || null,
+    hasCode: !!status.code
   });
 });
 
-// Télécharger le fichier creds.json
-app.get('/download/:sessionId', (req, res) => {
-  const { sessionId } = req.params;
-  const session = activeSessions.get(sessionId);
-  
-  if (!session || !session.connected) {
-    return res.status(404).json({ error: 'Session non trouvée ou non connectée' });
-  }
-  
-  const credsPath = path.join(session.sessionPath, 'creds.json');
-  
-  if (!fs.existsSync(credsPath)) {
-    return res.status(404).json({ error: 'Fichier creds.json non trouvé' });
-  }
-  
-  res.setHeader('Content-Disposition', 'attachment; filename="creds.json"');
-  res.setHeader('Content-Type', 'application/json');
-  res.sendFile(credsPath);
-  
-  // Nettoyer la session après téléchargement
-  setTimeout(() => {
-    try {
-      if (session.sock) {
-        session.sock.end();
-      }
-      if (fs.existsSync(session.sessionPath)) {
-        fs.rmSync(session.sessionPath, { recursive: true, force: true });
-      }
-      activeSessions.delete(sessionId);
-      console.log(`🧹 Session ${sessionId} nettoyée`);
-    } catch (error) {
-      console.error('Erreur lors du nettoyage:', error);
-    }
-  }, 5000);
-});
-
-// Nettoyage automatique des sessions expirées (toutes les 10 minutes)
-setInterval(() => {
-  const now = Date.now();
-  for (const [sessionId, session] of activeSessions.entries()) {
-    const sessionAge = now - parseInt(sessionId);
+// Fonction pour envoyer le fichier creds.json
+async function sendCredsFile(sock, phone, sessionPath) {
+  try {
+    console.log(`📤 Envoi du fichier creds.json à ${phone}`);
     
-    // Supprimer les sessions de plus de 10 minutes
-    if (sessionAge > 600000) {
-      try {
-        if (session.sock) {
-          session.sock.end();
-        }
-        if (fs.existsSync(session.sessionPath)) {
-          fs.rmSync(session.sessionPath, { recursive: true, force: true });
-        }
-        activeSessions.delete(sessionId);
-        console.log(`🧹 Session expirée ${sessionId} supprimée`);
-      } catch (error) {
-        console.error('Erreur lors du nettoyage automatique:', error);
-      }
+    const credsPath = path.join(sessionPath, 'creds.json');
+    if (fs.existsSync(credsPath)) {
+      const credsBuffer = fs.readFileSync(credsPath);
+      
+      await sock.sendMessage(phone + '@s.whatsapp.net', {
+        document: credsBuffer,
+        fileName: 'creds.json',
+        mimetype: 'application/json',
+        caption: '✅ *Fichier de session généré !*\n\n📁 Téléchargez ce fichier et placez-le dans le dossier `session` de votre déploiement.\n\n⚠️ *Important :* Gardez ce fichier secret !'
+      });
+      
+      console.log(`✅ Fichier creds.json envoyé à ${phone}`);
     }
+  } catch (error) {
+    console.error(`❌ Erreur envoi fichier ${phone}:`, error);
   }
-}, 600000);
-
-// Créer le dossier sessions s'il n'existe pas
-if (!fs.existsSync(path.join(__dirname, 'sessions'))) {
-  fs.mkdirSync(path.join(__dirname, 'sessions'), { recursive: true });
 }
 
+// Nettoyer les anciennes sessions au démarrage
+function cleanupOldSessions() {
+  console.log('🧹 Nettoyage des anciennes sessions...');
+  
+  fs.readdirSync('./')
+    .filter(dir => dir.startsWith('session_'))
+    .forEach(dir => {
+      try {
+        fs.rmSync(dir, { recursive: true, force: true });
+        console.log(`🗑️ Session ${dir} supprimée`);
+      } catch (e) {
+        console.log(`⚠️ Impossible de supprimer ${dir}`);
+      }
+    });
+}
+
+// Démarrage du serveur
 app.listen(PORT, () => {
   console.log(`🚀 Serveur démarré sur le port ${PORT}`);
-  console.log(`🌐 Accédez à votre application sur: http://localhost:${PORT}`);
+  console.log(`🌐 Interface disponible sur: http://localhost:${PORT}`);
+  cleanupOldSessions();
 });
