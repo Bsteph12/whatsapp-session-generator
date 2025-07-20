@@ -1,0 +1,585 @@
+<!DOCTYPE html>
+<html lang="fr">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>WhatsApp Bot - Générateur de Code de Pairage</title>
+    <script src="/socket.io/socket.io.js"></script>
+    <link href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css" rel="stylesheet">
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+
+        body {
+            font-family: 'SF Pro Display', -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Oxygen, Ubuntu, Cantarell, sans-serif;
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            min-height: 100vh;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            padding: 20px;
+        }
+
+        .container {
+            background: rgba(255, 255, 255, 0.95);
+            backdrop-filter: blur(20px);
+            border-radius: 24px;
+            padding: 40px;
+            width: 100%;
+            max-width: 480px;
+            box-shadow: 0 20px 40px rgba(0, 0, 0, 0.1);
+            border: 1px solid rgba(255, 255, 255, 0.2);
+            position: relative;
+            overflow: hidden;
+        }
+
+        .container::before {
+            content: '';
+            position: absolute;
+            top: -50%;
+            left: -50%;
+            width: 200%;
+            height: 200%;
+            background: linear-gradient(45deg, transparent, rgba(255, 255, 255, 0.1), transparent);
+            animation: shine 3s infinite;
+        }
+
+        @keyframes shine {
+            0% { transform: translateX(-100%) translateY(-100%) rotate(45deg); }
+            100% { transform: translateX(100%) translateY(100%) rotate(45deg); }
+        }
+
+        .header {
+            text-align: center;
+            margin-bottom: 40px;
+            position: relative;
+            z-index: 1;
+        }
+
+        .logo {
+            width: 80px;
+            height: 80px;
+            background: linear-gradient(135deg, #25d366, #128c7e);
+            border-radius: 50%;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            margin: 0 auto 20px;
+            box-shadow: 0 10px 30px rgba(37, 211, 102, 0.3);
+            animation: pulse 2s infinite;
+        }
+
+        @keyframes pulse {
+            0%, 100% { transform: scale(1); }
+            50% { transform: scale(1.05); }
+        }
+
+        .logo i {
+            font-size: 40px;
+            color: white;
+        }
+
+        h1 {
+            color: #2c3e50;
+            font-size: 28px;
+            font-weight: 700;
+            margin-bottom: 8px;
+        }
+
+        .subtitle {
+            color: #7f8c8d;
+            font-size: 16px;
+            font-weight: 400;
+        }
+
+        .form-container {
+            position: relative;
+            z-index: 1;
+        }
+
+        .input-group {
+            margin-bottom: 30px;
+            position: relative;
+        }
+
+        .input-group label {
+            display: block;
+            margin-bottom: 8px;
+            color: #2c3e50;
+            font-weight: 600;
+            font-size: 14px;
+            text-transform: uppercase;
+            letter-spacing: 0.5px;
+        }
+
+        .input-wrapper {
+            position: relative;
+        }
+
+        .input-wrapper i {
+            position: absolute;
+            left: 16px;
+            top: 50%;
+            transform: translateY(-50%);
+            color: #7f8c8d;
+            font-size: 18px;
+        }
+
+        input[type="tel"] {
+            width: 100%;
+            padding: 16px 16px 16px 50px;
+            border: 2px solid #e0e6ed;
+            border-radius: 16px;
+            font-size: 16px;
+            background: #f8f9fa;
+            transition: all 0.3s ease;
+            outline: none;
+        }
+
+        input[type="tel"]:focus {
+            border-color: #25d366;
+            background: white;
+            box-shadow: 0 0 0 4px rgba(37, 211, 102, 0.1);
+        }
+
+        .generate-btn {
+            width: 100%;
+            padding: 18px;
+            background: linear-gradient(135deg, #25d366, #128c7e);
+            color: white;
+            border: none;
+            border-radius: 16px;
+            font-size: 16px;
+            font-weight: 600;
+            cursor: pointer;
+            transition: all 0.3s ease;
+            position: relative;
+            overflow: hidden;
+            text-transform: uppercase;
+            letter-spacing: 1px;
+        }
+
+        .generate-btn:hover {
+            transform: translateY(-2px);
+            box-shadow: 0 10px 25px rgba(37, 211, 102, 0.3);
+        }
+
+        .generate-btn:active {
+            transform: translateY(0);
+        }
+
+        .generate-btn:disabled {
+            opacity: 0.7;
+            cursor: not-allowed;
+            transform: none;
+        }
+
+        .loading {
+            display: none;
+            align-items: center;
+            justify-content: center;
+            gap: 10px;
+        }
+
+        .loading.show {
+            display: flex;
+        }
+
+        .spinner {
+            width: 20px;
+            height: 20px;
+            border: 2px solid rgba(255, 255, 255, 0.3);
+            border-top: 2px solid white;
+            border-radius: 50%;
+            animation: spin 1s linear infinite;
+        }
+
+        @keyframes spin {
+            0% { transform: rotate(0deg); }
+            100% { transform: rotate(360deg); }
+        }
+
+        .result {
+            margin-top: 30px;
+            padding: 25px;
+            background: linear-gradient(135deg, #f8f9fa, #e9ecef);
+            border-radius: 20px;
+            border-left: 5px solid #25d366;
+            display: none;
+            position: relative;
+        }
+
+        .result.show {
+            display: block;
+            animation: slideIn 0.5s ease;
+        }
+
+        @keyframes slideIn {
+            from { opacity: 0; transform: translateY(20px); }
+            to { opacity: 1; transform: translateY(0); }
+        }
+
+        .pairing-code {
+            text-align: center;
+            margin: 20px 0;
+        }
+
+        .code-display {
+            font-family: 'Courier New', monospace;
+            font-size: 32px;
+            font-weight: bold;
+            color: #2c3e50;
+            background: white;
+            padding: 20px;
+            border-radius: 16px;
+            border: 2px dashed #25d366;
+            margin: 15px 0;
+            letter-spacing: 3px;
+            position: relative;
+            cursor: pointer;
+            transition: all 0.3s ease;
+        }
+
+        .code-display:hover {
+            background: #f8f9fa;
+            transform: scale(1.02);
+        }
+
+        .copy-btn {
+            background: #25d366;
+            color: white;
+            border: none;
+            padding: 10px 20px;
+            border-radius: 25px;
+            cursor: pointer;
+            font-size: 14px;
+            font-weight: 600;
+            transition: all 0.3s ease;
+            margin-top: 10px;
+        }
+
+        .copy-btn:hover {
+            background: #128c7e;
+            transform: translateY(-1px);
+        }
+
+        .instructions {
+            margin-top: 20px;
+            padding: 20px;
+            background: rgba(255, 255, 255, 0.8);
+            border-radius: 16px;
+            border-left: 4px solid #3498db;
+        }
+
+        .instructions h3 {
+            color: #2c3e50;
+            margin-bottom: 15px;
+            display: flex;
+            align-items: center;
+            gap: 10px;
+        }
+
+        .instructions ol {
+            color: #5a6c7d;
+            padding-left: 20px;
+            line-height: 1.6;
+        }
+
+        .instructions li {
+            margin-bottom: 8px;
+        }
+
+        .notification {
+            position: fixed;
+            top: 20px;
+            right: 20px;
+            background: #25d366;
+            color: white;
+            padding: 15px 20px;
+            border-radius: 12px;
+            box-shadow: 0 10px 30px rgba(37, 211, 102, 0.3);
+            display: none;
+            z-index: 1000;
+            animation: slideInRight 0.5s ease;
+        }
+
+        @keyframes slideInRight {
+            from { transform: translateX(100%); opacity: 0; }
+            to { transform: translateX(0); opacity: 1; }
+        }
+
+        .notification.show {
+            display: block;
+        }
+
+        .notification.error {
+            background: #e74c3c;
+            box-shadow: 0 10px 30px rgba(231, 76, 60, 0.3);
+        }
+
+        .footer {
+            text-align: center;
+            margin-top: 30px;
+            color: #7f8c8d;
+            font-size: 14px;
+            position: relative;
+            z-index: 1;
+        }
+
+        .footer i {
+            color: #e74c3c;
+            margin: 0 5px;
+            animation: heartbeat 1.5s ease-in-out infinite;
+        }
+
+        @keyframes heartbeat {
+            0%, 100% { transform: scale(1); }
+            50% { transform: scale(1.1); }
+        }
+
+        @media (max-width: 768px) {
+            .container {
+                padding: 30px 20px;
+                margin: 10px;
+            }
+            
+            h1 {
+                font-size: 24px;
+            }
+            
+            .code-display {
+                font-size: 24px;
+                padding: 15px;
+            }
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <div class="header">
+            <div class="logo">
+                <i class="fab fa-whatsapp"></i>
+            </div>
+            <h1>Bot WhatsApp</h1>
+            <p class="subtitle">Générateur de Code de Pairage</p>
+        </div>
+
+        <div class="form-container">
+            <form id="pairingForm">
+                <div class="input-group">
+                    <label for="phoneNumber">
+                        <i class="fas fa-mobile-alt"></i> Numéro de téléphone
+                    </label>
+                    <div class="input-wrapper">
+                        <i class="fas fa-phone"></i>
+                        <input type="tel" 
+                               id="phoneNumber" 
+                               placeholder="22898133388" 
+                               required
+                               pattern="[0-9]{8,15}"
+                               title="Entrez votre numéro sans espaces ni tirets">
+                    </div>
+                </div>
+
+                <button type="submit" class="generate-btn" id="generateBtn">
+                    <span class="btn-text">Générer le Code</span>
+                    <div class="loading">
+                        <div class="spinner"></div>
+                        <span>Génération...</span>
+                    </div>
+                </button>
+            </form>
+
+            <div id="result" class="result">
+                <div class="pairing-code">
+                    <h3><i class="fas fa-key"></i> Votre Code de Pairage</h3>
+                    <div class="code-display" id="codeDisplay"></div>
+                    <button class="copy-btn" id="copyBtn">
+                        <i class="fas fa-copy"></i> Copier le Code
+                    </button>
+                </div>
+
+                <div class="instructions">
+                    <h3><i class="fas fa-info-circle"></i> Instructions</h3>
+                    <ol>
+                        <li><strong>Copiez</strong> le code ci-dessus</li>
+                        <li><strong>Ouvrez WhatsApp</strong> sur votre téléphone</li>
+                        <li>Allez dans <strong>Paramètres → Appareils liés</strong></li>
+                        <li>Appuyez sur <strong>"Lier un appareil"</strong></li>
+                        <li>Sélectionnez <strong>"Lier avec un numéro"</strong></li>
+                        <li><strong>Entrez le code</strong> affiché ci-dessus</li>
+                        <li>Vous recevrez le fichier <strong>creds.json</strong> par WhatsApp</li>
+                        <li><strong>Téléchargez-le</strong> et placez-le dans le dossier <code>session/</code></li>
+                    </ol>
+                </div>
+            </div>
+        </div>
+
+        <div class="footer">
+            Créé avec <i class="fas fa-heart"></i> pour votre Bot WhatsApp
+        </div>
+    </div>
+
+    <div id="notification" class="notification">
+        <i class="fas fa-check-circle"></i>
+        <span id="notificationText">Code copié dans le presse-papiers!</span>
+    </div>
+
+    <script>
+        const socket = io();
+        const form = document.getElementById('pairingForm');
+        const generateBtn = document.getElementById('generateBtn');
+        const btnText = generateBtn.querySelector('.btn-text');
+        const loading = generateBtn.querySelector('.loading');
+        const result = document.getElementById('result');
+        const codeDisplay = document.getElementById('codeDisplay');
+        const copyBtn = document.getElementById('copyBtn');
+        const notification = document.getElementById('notification');
+        const notificationText = document.getElementById('notificationText');
+
+        let currentCode = '';
+        let currentSessionId = '';
+
+        form.addEventListener('submit', async (e) => {
+            e.preventDefault();
+            
+            const phoneNumber = document.getElementById('phoneNumber').value.trim();
+            
+            if (!phoneNumber || phoneNumber.length < 8) {
+                showNotification('Veuillez entrer un numéro valide', 'error');
+                return;
+            }
+
+            setLoading(true);
+            hideResult();
+
+            try {
+                const response = await fetch('/start-pairing', {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/json'
+                    },
+                    body: JSON.stringify({ phoneNumber })
+                });
+
+                const data = await response.json();
+
+                if (data.success) {
+                    currentCode = data.pairingCode;
+                    currentSessionId = data.sessionId;
+                    displayCode(currentCode);
+                    showNotification('Code généré avec succès!');
+                } else {
+                    showNotification(data.error || 'Erreur lors de la génération', 'error');
+                }
+            } catch (error) {
+                console.error('Erreur:', error);
+                showNotification('Erreur de connexion au serveur', 'error');
+            } finally {
+                setLoading(false);
+            }
+        });
+
+        copyBtn.addEventListener('click', async () => {
+            if (!currentCode) return;
+
+            try {
+                await navigator.clipboard.writeText(currentCode);
+                showNotification('Code copié dans le presse-papiers!');
+                
+                // Animation du bouton
+                copyBtn.innerHTML = '<i class="fas fa-check"></i> Copié!';
+                copyBtn.style.background = '#27ae60';
+                
+                setTimeout(() => {
+                    copyBtn.innerHTML = '<i class="fas fa-copy"></i> Copier le Code';
+                    copyBtn.style.background = '#25d366';
+                }, 2000);
+            } catch (error) {
+                // Fallback pour navigateurs plus anciens
+                const textArea = document.createElement('textarea');
+                textArea.value = currentCode;
+                document.body.appendChild(textArea);
+                textArea.select();
+                document.execCommand('copy');
+                document.body.removeChild(textArea);
+                showNotification('Code copié!');
+            }
+        });
+
+        // Permettre de cliquer sur le code pour le copier
+        codeDisplay.addEventListener('click', () => {
+            copyBtn.click();
+        });
+
+        socket.on('connection-success', (data) => {
+            if (data.sessionId === currentSessionId) {
+                showNotification('✅ Connexion réussie! Fichier envoyé sur WhatsApp', 'success');
+                
+                // Mise à jour des instructions
+                const instructions = document.querySelector('.instructions ol');
+                instructions.innerHTML = `
+                    <li style="color: #27ae60;"><strong>✅ Connexion établie!</strong></li>
+                    <li><strong>Ouvrez WhatsApp</strong> sur votre téléphone</li>
+                    <li>Vous devriez avoir reçu le fichier <strong>creds.json</strong></li>
+                    <li><strong>Téléchargez-le</strong> et placez-le dans <code>session/creds.json</code></li>
+                    <li>Lancez votre bot avec <strong>node index.js</strong></li>
+                `;
+            }
+        });
+
+        socket.on('connection-error', (data) => {
+            if (data.sessionId === currentSessionId) {
+                showNotification('❌ Erreur de connexion: ' + data.error, 'error');
+            }
+        });
+
+        function setLoading(loading) {
+            if (loading) {
+                btnText.style.display = 'none';
+                generateBtn.querySelector('.loading').classList.add('show');
+                generateBtn.disabled = true;
+            } else {
+                btnText.style.display = 'block';
+                generateBtn.querySelector('.loading').classList.remove('show');
+                generateBtn.disabled = false;
+            }
+        }
+
+        function displayCode(code) {
+            codeDisplay.textContent = code;
+            result.classList.add('show');
+            
+            // Animation de mise en évidence
+            codeDisplay.style.animation = 'none';
+            setTimeout(() => {
+                codeDisplay.style.animation = 'pulse 2s infinite';
+            }, 100);
+        }
+
+        function hideResult() {
+            result.classList.remove('show');
+        }
+
+        function showNotification(message, type = 'success') {
+            notificationText.textContent = message;
+            notification.className = `notification show ${type}`;
+            
+            setTimeout(() => {
+                notification.classList.remove('show');
+            }, 4000);
+        }
+
+        // Validation en temps réel du numéro
+        document.getElementById('phoneNumber').addEventListener('input', (e) => {
+            e.target.value = e.target.value.replace(/[^0-9]/g, '');
+        });
+
+        // Auto-focus sur le champ numéro
+        document.getElementById('phoneNumber').focus();
+    </script>
+</body>
+</html>
