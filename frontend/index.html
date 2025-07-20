@@ -1,59 +1,448 @@
 <!DOCTYPE html>
 <html lang="fr">
 <head>
-  <meta charset="UTF-8" />
-  <title>Jinwoo Pairing Code</title>
-  <style>
-    body { font-family: sans-serif; text-align: center; margin-top: 80px; }
-    input, button { font-size: 18px; padding: 10px; margin: 10px; }
-    .toast {
-      display: none;
-      background-color: #25D366;
-      color: white;
-      padding: 15px;
-      margin: 20px;
-      border-radius: 10px;
-      cursor: pointer;
-      white-space: pre-line;
-    }
-  </style>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Bot WhatsApp - Pairage</title>
+    <script src="/socket.io/socket.io.js"></script>
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+
+        body {
+            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            min-height: 100vh;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            padding: 20px;
+        }
+
+        .container {
+            background: white;
+            border-radius: 20px;
+            padding: 40px;
+            box-shadow: 0 20px 40px rgba(0,0,0,0.1);
+            max-width: 500px;
+            width: 100%;
+            text-align: center;
+        }
+
+        .whatsapp-icon {
+            width: 80px;
+            height: 80px;
+            background: #25D366;
+            border-radius: 50%;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            margin: 0 auto 30px;
+            position: relative;
+        }
+
+        .whatsapp-icon::after {
+            content: '💬';
+            font-size: 40px;
+            color: white;
+        }
+
+        h1 {
+            color: #333;
+            margin-bottom: 10px;
+            font-size: 28px;
+        }
+
+        .subtitle {
+            color: #666;
+            margin-bottom: 30px;
+            font-size: 16px;
+            line-height: 1.5;
+        }
+
+        .input-group {
+            margin-bottom: 30px;
+        }
+
+        label {
+            display: block;
+            text-align: left;
+            margin-bottom: 8px;
+            color: #333;
+            font-weight: 500;
+        }
+
+        .phone-input-container {
+            position: relative;
+        }
+
+        .country-code {
+            position: absolute;
+            left: 15px;
+            top: 50%;
+            transform: translateY(-50%);
+            color: #666;
+            font-weight: 500;
+            z-index: 2;
+        }
+
+        input[type="tel"] {
+            width: 100%;
+            padding: 15px 15px 15px 60px;
+            border: 2px solid #e1e5e9;
+            border-radius: 12px;
+            font-size: 16px;
+            transition: all 0.3s ease;
+        }
+
+        input[type="tel"]:focus {
+            outline: none;
+            border-color: #25D366;
+            box-shadow: 0 0 0 3px rgba(37, 211, 102, 0.1);
+        }
+
+        .generate-btn {
+            background: linear-gradient(135deg, #25D366, #20B358);
+            color: white;
+            border: none;
+            padding: 15px 40px;
+            border-radius: 12px;
+            font-size: 16px;
+            font-weight: 600;
+            cursor: pointer;
+            transition: all 0.3s ease;
+            width: 100%;
+            position: relative;
+            overflow: hidden;
+        }
+
+        .generate-btn:hover {
+            transform: translateY(-2px);
+            box-shadow: 0 8px 25px rgba(37, 211, 102, 0.3);
+        }
+
+        .generate-btn:disabled {
+            background: #ccc;
+            cursor: not-allowed;
+            transform: none;
+            box-shadow: none;
+        }
+
+        .loading {
+            display: none;
+            align-items: center;
+            justify-content: center;
+            gap: 10px;
+        }
+
+        .spinner {
+            width: 20px;
+            height: 20px;
+            border: 2px solid rgba(255,255,255,0.3);
+            border-radius: 50%;
+            border-top-color: white;
+            animation: spin 1s ease-in-out infinite;
+        }
+
+        @keyframes spin {
+            to { transform: rotate(360deg); }
+        }
+
+        .result-section {
+            display: none;
+            margin-top: 30px;
+            padding: 25px;
+            background: #f8f9fa;
+            border-radius: 12px;
+            border-left: 4px solid #25D366;
+        }
+
+        .pairing-code {
+            font-size: 24px;
+            font-weight: bold;
+            color: #25D366;
+            letter-spacing: 2px;
+            margin: 15px 0;
+            padding: 15px;
+            background: white;
+            border-radius: 8px;
+            border: 2px dashed #25D366;
+        }
+
+        .instructions {
+            text-align: left;
+            color: #555;
+            line-height: 1.6;
+        }
+
+        .instructions h3 {
+            color: #25D366;
+            margin-bottom: 15px;
+            display: flex;
+            align-items: center;
+            gap: 10px;
+        }
+
+        .instructions ol {
+            padding-left: 20px;
+        }
+
+        .instructions li {
+            margin-bottom: 10px;
+        }
+
+        .warning {
+            background: #fff3cd;
+            border: 1px solid #ffeaa7;
+            color: #856404;
+            padding: 15px;
+            border-radius: 8px;
+            margin-top: 20px;
+            font-size: 14px;
+        }
+
+        .success-message, .error-message {
+            padding: 15px;
+            border-radius: 8px;
+            margin-top: 20px;
+            display: none;
+        }
+
+        .success-message {
+            background: #d4edda;
+            border: 1px solid #c3e6cb;
+            color: #155724;
+        }
+
+        .error-message {
+            background: #f8d7da;
+            border: 1px solid #f5c6cb;
+            color: #721c24;
+        }
+
+        .reset-btn {
+            background: #6c757d;
+            color: white;
+            border: none;
+            padding: 10px 20px;
+            border-radius: 8px;
+            font-size: 14px;
+            cursor: pointer;
+            margin-top: 15px;
+            transition: background 0.3s ease;
+        }
+
+        .reset-btn:hover {
+            background: #5a6268;
+        }
+
+        @media (max-width: 600px) {
+            .container {
+                padding: 30px 20px;
+            }
+            
+            h1 {
+                font-size: 24px;
+            }
+            
+            .pairing-code {
+                font-size: 20px;
+            }
+        }
+    </style>
 </head>
 <body>
-  <h1>🔐 Lier votre WhatsApp</h1>
-  <input type="text" id="number" placeholder="Ex: 22898133388" />
-  <button onclick="generateCode()">Générer le code</button>
+    <div class="container">
+        <div class="whatsapp-icon"></div>
+        
+        <h1>Bot WhatsApp</h1>
+        <p class="subtitle">Générez un code de pairage pour connecter votre bot à WhatsApp</p>
+        
+        <form id="pairingForm">
+            <div class="input-group">
+                <label for="phoneNumber">Numéro de téléphone</label>
+                <div class="phone-input-container">
+                    <span class="country-code">+237</span>
+                    <input 
+                        type="tel" 
+                        id="phoneNumber" 
+                        placeholder="6xxxxxxxx"
+                        pattern="[6-9][0-9]{8}"
+                        maxlength="9"
+                        required
+                    >
+                </div>
+            </div>
+            
+            <button type="submit" class="generate-btn" id="generateBtn">
+                <span class="btn-text">Générer le code</span>
+                <div class="loading">
+                    <div class="spinner"></div>
+                    <span>Génération en cours...</span>
+                </div>
+            </button>
+        </form>
+        
+        <div class="result-section" id="resultSection">
+            <div class="instructions">
+                <h3>📱 Instructions</h3>
+                <ol>
+                    <li>Ouvrez WhatsApp sur votre téléphone</li>
+                    <li>Allez dans <strong>Paramètres</strong> → <strong>Appareils liés</strong></li>
+                    <li>Appuyez sur <strong>"Lier un appareil"</strong></li>
+                    <li>Choisissez <strong>"Lier avec un numéro"</strong></li>
+                    <li>Entrez ce code de pairage :</li>
+                </ol>
+                
+                <div class="pairing-code" id="pairingCode">XXXX-XXXX</div>
+                
+                <div class="warning">
+                    ⚠️ <strong>Important :</strong> Ce code expire dans 10 minutes. Une fois connecté, vous recevrez automatiquement le fichier de configuration par WhatsApp.
+                </div>
+            </div>
+            
+            <button class="reset-btn" onclick="resetForm()">Nouveau code</button>
+        </div>
+        
+        <div class="success-message" id="successMessage">
+            ✅ <strong>Connexion réussie !</strong> Le fichier de configuration a été envoyé sur votre WhatsApp.
+        </div>
+        
+        <div class="error-message" id="errorMessage">
+            ❌ <strong>Erreur :</strong> <span id="errorText">Une erreur est survenue</span>
+        </div>
+    </div>
 
-  <div id="toast" class="toast" onclick="downloadCreds()"></div>
+    <script>
+        const socket = io();
+        const form = document.getElementById('pairingForm');
+        const generateBtn = document.getElementById('generateBtn');
+        const phoneInput = document.getElementById('phoneNumber');
+        const resultSection = document.getElementById('resultSection');
+        const pairingCodeEl = document.getElementById('pairingCode');
+        const successMessage = document.getElementById('successMessage');
+        const errorMessage = document.getElementById('errorMessage');
+        const errorText = document.getElementById('errorText');
 
-  <script>
-    let sessionId = null;
+        // Formatage automatique du numéro
+        phoneInput.addEventListener('input', function(e) {
+            let value = e.target.value.replace(/\D/g, '');
+            if (value.length > 9) value = value.slice(0, 9);
+            e.target.value = value;
+        });
 
-    async function generateCode() {
-      const number = document.getElementById('number').value.trim();
-      const toast = document.getElementById('toast');
-      toast.style.display = 'none';
+        // Soumission du formulaire
+        form.addEventListener('submit', async function(e) {
+            e.preventDefault();
+            
+            const phoneNumber = phoneInput.value.trim();
+            
+            // Validation
+            if (phoneNumber.length !== 9 || !phoneNumber.match(/^[6-9]/)) {
+                showError('Veuillez entrer un numéro camerounais valide (9 chiffres commençant par 6, 7, 8 ou 9)');
+                return;
+            }
 
-      const res = await fetch('https://YOUR_BACKEND_URL/api/pair', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ number })
-      });
-      const data = await res.json();
+            const fullNumber = '237' + phoneNumber;
+            
+            setLoading(true);
+            hideMessages();
+            
+            try {
+                const response = await fetch('/start-pairing', {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/json'
+                    },
+                    body: JSON.stringify({ phoneNumber: fullNumber })
+                });
+                
+                const data = await response.json();
+                
+                if (response.ok && data.success) {
+                    showPairingCode(data.pairingCode);
+                } else {
+                    showError(data.error || 'Erreur lors de la génération du code');
+                }
+            } catch (error) {
+                console.error('Erreur:', error);
+                showError('Erreur de connexion au serveur');
+            } finally {
+                setLoading(false);
+            }
+        });
 
-      if (data.code) {
-        sessionId = data.sessionId;
-        toast.innerText = `🔗 Code : ${data.code}\n\nCliquez ici pour télécharger creds.json`;
-        toast.style.display = 'block';
-      } else {
-        alert('❌ Erreur : ' + (data.error || 'Inconnue'));
-      }
-    }
+        // Écouter les événements Socket.IO
+        socket.on('connection-success', function(data) {
+            console.log('Connexion réussie:', data);
+            showSuccess();
+        });
 
-    function downloadCreds() {
-      if (sessionId) {
-        window.location.href = `https://YOUR_BACKEND_URL/api/download/${sessionId}`;
-      }
-    }
-  </script>
+        socket.on('connection-error', function(data) {
+            console.error('Erreur de connexion:', data);
+            showError(data.error || 'Erreur de connexion');
+        });
+
+        // Fonctions utilitaires
+        function setLoading(loading) {
+            const btnText = generateBtn.querySelector('.btn-text');
+            const loadingEl = generateBtn.querySelector('.loading');
+            
+            if (loading) {
+                btnText.style.display = 'none';
+                loadingEl.style.display = 'flex';
+                generateBtn.disabled = true;
+            } else {
+                btnText.style.display = 'block';
+                loadingEl.style.display = 'none';
+                generateBtn.disabled = false;
+            }
+        }
+
+        function showPairingCode(code) {
+            pairingCodeEl.textContent = code;
+            resultSection.style.display = 'block';
+            resultSection.scrollIntoView({ behavior: 'smooth' });
+        }
+
+        function showSuccess() {
+            successMessage.style.display = 'block';
+            resultSection.style.display = 'none';
+            successMessage.scrollIntoView({ behavior: 'smooth' });
+        }
+
+        function showError(message) {
+            errorText.textContent = message;
+            errorMessage.style.display = 'block';
+            errorMessage.scrollIntoView({ behavior: 'smooth' });
+        }
+
+        function hideMessages() {
+            successMessage.style.display = 'none';
+            errorMessage.style.display = 'none';
+            resultSection.style.display = 'none';
+        }
+
+        function resetForm() {
+            form.reset();
+            hideMessages();
+            setLoading(false);
+        }
+
+        // Animation d'entrée
+        document.addEventListener('DOMContentLoaded', function() {
+            document.querySelector('.container').style.opacity = '0';
+            document.querySelector('.container').style.transform = 'translateY(30px)';
+            
+            setTimeout(() => {
+                document.querySelector('.container').style.transition = 'all 0.6s ease';
+                document.querySelector('.container').style.opacity = '1';
+                document.querySelector('.container').style.transform = 'translateY(0)';
+            }, 100);
+        });
+    </script>
 </body>
 </html>
