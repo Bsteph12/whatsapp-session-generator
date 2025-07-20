@@ -9,9 +9,11 @@ const {
   fetchLatestBaileysVersion,
 } = require('@whiskeysockets/baileys');
 
+
 const app = express();
 app.use(cors());
 app.use(express.json());
+app.use(express.static(path.join(__dirname, '../frontend')));
 
 const SESSIONS_DIR = './sessions';
 if (!fs.existsSync(SESSIONS_DIR)) fs.mkdirSync(SESSIONS_DIR);
@@ -49,6 +51,10 @@ app.get('/api/download/:sessionId', (req, res) => {
   if (!fs.existsSync(credsPath)) return res.status(404).json({ error: 'Session introuvable' });
   res.download(credsPath);
 });
+app.get('/', (req, res) => {
+  res.sendFile(path.join(__dirname, '../frontend/index.html'));
+});
+
 
 const PORT = process.env.PORT || 3000;
 app.listen(PORT, () => console.log(`✅ Backend prêt sur :${PORT}`));
