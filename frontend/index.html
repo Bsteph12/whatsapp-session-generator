@@ -1,0 +1,59 @@
+<!DOCTYPE html>
+<html lang="fr">
+<head>
+  <meta charset="UTF-8" />
+  <title>Jinwoo Pairing Code</title>
+  <style>
+    body { font-family: sans-serif; text-align: center; margin-top: 80px; }
+    input, button { font-size: 18px; padding: 10px; margin: 10px; }
+    .toast {
+      display: none;
+      background-color: #25D366;
+      color: white;
+      padding: 15px;
+      margin: 20px;
+      border-radius: 10px;
+      cursor: pointer;
+      white-space: pre-line;
+    }
+  </style>
+</head>
+<body>
+  <h1>🔐 Lier votre WhatsApp</h1>
+  <input type="text" id="number" placeholder="Ex: 22898133388" />
+  <button onclick="generateCode()">Générer le code</button>
+
+  <div id="toast" class="toast" onclick="downloadCreds()"></div>
+
+  <script>
+    let sessionId = null;
+
+    async function generateCode() {
+      const number = document.getElementById('number').value.trim();
+      const toast = document.getElementById('toast');
+      toast.style.display = 'none';
+
+      const res = await fetch('https://YOUR_BACKEND_URL/api/pair', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ number })
+      });
+      const data = await res.json();
+
+      if (data.code) {
+        sessionId = data.sessionId;
+        toast.innerText = `🔗 Code : ${data.code}\n\nCliquez ici pour télécharger creds.json`;
+        toast.style.display = 'block';
+      } else {
+        alert('❌ Erreur : ' + (data.error || 'Inconnue'));
+      }
+    }
+
+    function downloadCreds() {
+      if (sessionId) {
+        window.location.href = `https://YOUR_BACKEND_URL/api/download/${sessionId}`;
+      }
+    }
+  </script>
+</body>
+</html>
